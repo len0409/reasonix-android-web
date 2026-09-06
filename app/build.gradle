@@ -14,11 +14,12 @@ android {
 
     signingConfigs {
         release {
-            if (project.hasProperty('REASONIX_STORE_FILE')) {
-                storeFile file(REASONIX_STORE_FILE)
-                storePassword REASONIX_STORE_PASSWORD
-                keyAlias REASONIX_KEY_ALIAS
-                keyPassword REASONIX_KEY_PASSWORD
+            def storeFileEnv = System.getenv('REASONIX_STORE_FILE')
+            if (storeFileEnv != null && !storeFileEnv.isEmpty()) {
+                storeFile file(storeFileEnv)
+                storePassword System.getenv('REASONIX_STORE_PASSWORD')
+                keyAlias System.getenv('REASONIX_KEY_ALIAS')
+                keyPassword System.getenv('REASONIX_KEY_PASSWORD')
             }
         }
     }
@@ -26,7 +27,10 @@ android {
     buildTypes {
         release {
             minifyEnabled false
-            signingConfig signingConfigs.release
+            def storeFileEnv = System.getenv('REASONIX_STORE_FILE')
+            if (storeFileEnv != null && !storeFileEnv.isEmpty()) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 
