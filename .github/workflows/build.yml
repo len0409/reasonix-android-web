@@ -40,11 +40,11 @@ jobs:
         env:
           KEYSTORE_B64: ${{ secrets.REASONIX_KEYSTORE_B64 }}
         if: env.KEYSTORE_B64 != ''
-        run: echo "$KEYSTORE_B64" | base64 -d > keystore.p12
+        run: echo "$KEYSTORE_B64" | base64 -d > "$GITHUB_WORKSPACE/keystore.p12"
 
       - name: Build release APK
         env:
-          REASONIX_STORE_FILE: keystore.p12
+          REASONIX_STORE_FILE: ${{ github.workspace }}/keystore.p12
           REASONIX_STORE_PASSWORD: ${{ secrets.REASONIX_STORE_PASSWORD }}
           REASONIX_KEY_ALIAS: ${{ secrets.REASONIX_KEY_ALIAS }}
           REASONIX_KEY_PASSWORD: ${{ secrets.REASONIX_KEY_PASSWORD }}
