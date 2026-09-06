@@ -9,6 +9,8 @@ import android.net.Uri;
 import android.net.http.SslError;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.View;
 import android.webkit.ConsoleMessage;
 import android.webkit.CookieManager;
@@ -17,6 +19,7 @@ import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -34,6 +37,10 @@ public class MainActivity extends Activity {
     private static final String HOME_URL = "http://127.0.0.1:8787/";
     private WebView webView;
     private View progressView;
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private boolean loadFinished = false;
+    private boolean loadFailed = false;
+    private int retryCount = 0;
 
     // File-upload support (Chat UI has no uploads, but keep for completeness)
     private ValueCallback<Uri[]> filePathCallback;
@@ -69,6 +76,9 @@ public class MainActivity extends Activity {
         webView.setBackgroundColor(Color.parseColor("#1a1a1e"));
         webView.setWebViewClient(new ReasonixWebViewClient());
         webView.setWebChromeClient(new ReasonixChromeClient());
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+            WebView.setWebContentsDebuggingEnabled(true);
+        }
 
         // Cookie persistence so /auth token survives restarts
         CookieManager.getInstance().setAcceptCookie(true);
@@ -152,22 +162,63 @@ public class MainActivity extends Activity {
     private class ReasonixWebViewClient extends WebViewClient {
         @Override
         public void onPageStarted(WebView view, String url, Bitmap favicon) {
+            loadFinished = false;
+            loadFailed = false;
+            retryCount = 0;
             if (progressView != null) progressView.setVisibility(View.VISIBLE);
+            // Safety net: never let the loading overlay stick around
+            handler.removeCallbacks(hideProgressRunnable);
+            handler.postDelayed(hideProgressRunnable, 10000);
         }
 
         @Override
         public void onPageFinished(WebView view, String url) {
+            loadFinished = true;
+            hideProgress();
+        }
+
+        private final Runnable hideProgressRunnable = new Runnable() {
+            @Override
+            public void run() {
+                hideProgress();
+            }
+        };
+
+        private void hideProgress() {
             if (progressView != null) progressView.setVisibility(View.GONE);
+            handler.removeCallbacks(hideProgressRunnable);
         }
 
         @Override
         public void onReceivedError(WebView view, WebResourceRequest request,
                                     WebResourceError error) {
-            // If the local reasonix server isn't reachable, show a helpful page.
-            if (request != null && request.getUrl() != null
-                    && HOME_URL.startsWith(request.getUrl().toString())
-                    && error != null) {
-                showServerUnreachable();
+            hideProgress();
+            if (request != null && request.isForMainFrame()) {
+                loadFailed = true;
+                // Retry a few times before giving up: the local server may be
+                // briefly unreachable during startup / proot network hiccups.
+                if (retryCount < 3) {
+                    retryCount++;
+                    handler.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (webView != null && !loadFinished) {
+                                webView.loadUrl(HOME_URL);
+                            }
+                        }
+                    }, 1500);
+                } else {
+                    showServerUnreachable();
+                }
+            }
+        }
+
+        @Override
+        public void onReceivedHttpError(WebView view, WebResourceRequest request,
+                                        WebResourceResponse errorResponse) {
+            if (request != null && request.isForMainFrame()) {
+                loadFailed = true;
+                hideProgress();
             }
         }
 
@@ -192,6 +243,20 @@ public class MainActivity extends Activity {
             } catch (Exception ignored) {
             }
             return true;
+        }
+
+        @Override
+        public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+            String host = request != null && request.getUrl() != null
+                    ? request.getUrl().getHost() : null;
+            // Google Fonts is unreachable on many networks and its <link> blocks
+            // first paint. Return an empty response so the page renders immediately
+            // with system font fallbacks.
+            if (host != null && (host.equals("fonts.googleapis.com") || host.equals("fonts.gstatic.com"))) {
+                return new WebResourceResponse("text/plain", "utf-8",
+                        new java.io.ByteArrayInputStream(new byte[0]));
+            }
+            return super.shouldInterceptRequest(view, request);
         }
     }
 
@@ -218,19 +283,22 @@ public class MainActivity extends Activity {
 
     private void showServerUnreachable() {
         String html = "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' "
-                + "content='width=device-width,initial-scale=1'><title>Reasonix</title></head>"
+                + "content='width=device-width,initial-scale=1'><title>Reasonix</title>"
+                + "<script>function poll(){fetch('/status',{cache:'no-store'}).then(r=>{"
+                + "if(r.ok){location.href='/';}}).catch(()=>{}).finally(()=>setTimeout(poll,2000));}"
+                + "setTimeout(poll,2000);</script></head>"
                 + "<body style='margin:0;padding:40px 24px;background:#15151a;color:#f0f0f0;"
                 + "font-family:-apple-system,sans-serif;text-align:center'>"
                 + "<h2 style='margin-bottom:12px'>Reasonix 服务未启动</h2>"
                 + "<p style='color:#aaa;line-height:1.7'>请先在 Termux 中启动 reasonix 服务：<br>"
                 + "<code style='background:#222;padding:8px 14px;border-radius:6px;display:inline-block;"
                 + "margin-top:12px'>reasonix serve --addr 0.0.0.0:8787</code></p>"
-                + "<p style='color:#777;font-size:13px;margin-top:24px'>启动后返回本页，下拉或点击重试。</p>"
+                + "<p style='color:#777;font-size:13px;margin-top:24px'>服务启动后本页会自动跳转。</p>"
                 + "<button onclick='location.reload()' style='margin-top:12px;padding:10px 28px;"
                 + "border:none;border-radius:8px;background:#e08c3a;color:#fff;font-size:15px'>重试</button>"
                 + "</body></html>";
         if (webView != null) {
-            webView.loadDataWithBaseURL("file:///android_asset/error.html",
+            webView.loadDataWithBaseURL("http://127.0.0.1:8787/",
                     html, "text/html", "utf-8", null);
         }
     }
