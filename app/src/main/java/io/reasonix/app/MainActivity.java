@@ -10,15 +10,13 @@ import android.net.http.SslError;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
-import android.view.Window;
-import android.view.WindowInsets;
 import android.webkit.ConsoleMessage;
 import android.webkit.CookieManager;
 import android.webkit.SslErrorHandler;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
-import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -66,8 +64,7 @@ public class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             s.setSafeBrowsingEnabled(false);
         }
-        // Let the page use large in-memory storage for sessions/history
-        s.setAppCacheEnabled(true);
+        // Persistent storage for sessions/history (domStorage + database already on)
 
         webView.setBackgroundColor(Color.parseColor("#1a1a1e"));
         webView.setWebViewClient(new ReasonixWebViewClient());
@@ -165,11 +162,11 @@ public class MainActivity extends Activity {
 
         @Override
         public void onReceivedError(WebView view, WebResourceRequest request,
-                                    WebResourceResponse errorResponse) {
+                                    WebResourceError error) {
             // If the local reasonix server isn't reachable, show a helpful page.
             if (request != null && request.getUrl() != null
                     && HOME_URL.startsWith(request.getUrl().toString())
-                    && errorResponse != null) {
+                    && error != null) {
                 showServerUnreachable();
             }
         }
