@@ -1,0 +1,42 @@
+apply plugin: 'com.android.application'
+
+android {
+    namespace 'io.reasonix.app'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "io.reasonix.app"
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
+
+    signingConfigs {
+        release {
+            if (project.hasProperty('REASONIX_STORE_FILE')) {
+                storeFile file(REASONIX_STORE_FILE)
+                storePassword REASONIX_STORE_PASSWORD
+                keyAlias REASONIX_KEY_ALIAS
+                keyPassword REASONIX_KEY_PASSWORD
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.webkit:webkit:1.9.0'
+}
